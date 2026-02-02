@@ -116,7 +116,19 @@ class Database:
                 "general_store",
                 "마을 잡화점 (General Store)",
                 "다양한 물건이 진열된 잡화점입니다. 주인장이 반갑게 인사합니다.\n[판매 품목]\n- APPLE (5 Gold): 맛있는 사과\n- FLUTE (50 Gold): 신비한 피리\n\n구매하려면 'BUY <ITEM>'을 입력하세요.",
-                json.dumps({"SOUTH": "town_entry"})
+                json.dumps({"SOUTH": "town_entry", "NORTH": "castle_gate"})
+            ),
+            (
+                "castle_gate",
+                "성문 (Castle Gate)",
+                "거대한 성문 앞입니다. 도개교(Drawbridge)가 올라가 있어 해자를 건널 수 없습니다.\n성벽 위에서 경비병이 졸고 있는 것 같습니다.",
+                json.dumps({"SOUTH": "general_store"}) # 초기에는 NORTH 없음
+            ),
+            (
+                "throne_room",
+                "알현실 (Throne Room)",
+                "화려한 샹들리에가 빛나는 왕의 알현실입니다.\n왕좌에는 왕이 앉아 있고, 그 옆에 공주가 무사히 서 있습니다!",
+                json.dumps({"SOUTH": "castle_gate"})
             )
         ]
         self.cursor.executemany("INSERT OR REPLACE INTO rooms VALUES (?, ?, ?, ?)", initial_rooms)
@@ -164,6 +176,11 @@ class Database:
     def delete_monster(self, room_id: str):
         """몬스터 처치 시 DB에서 제거"""
         self.cursor.execute("DELETE FROM monsters WHERE room_id = ?", (room_id,))
+        self.conn.commit()
+
+    def update_monster_hp(self, room_id: str, new_hp: int):
+        """몬스터 HP 업데이트"""
+        self.cursor.execute("UPDATE monsters SET hp = ? WHERE room_id = ?", (new_hp, room_id))
         self.conn.commit()
 
     def close(self):

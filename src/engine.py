@@ -20,7 +20,6 @@ class GameEngine:
             print("\n게임을 종료합니다. 안녕히 가세요!")
             return
 
-        # 전투 중에는 이동/저장 제한 (단, ATTACK/RUN은 허용)
         monster = self.db.get_monster(self.state.current_room_id)
         if monster and verb not in ["ATTACK", "KILL", "FIGHT", "RUN", "FLEE", "INV", "I"]:
             print(f"\n🚫 {monster['name']}가 앞을 막고 있어 다른 행동을 할 수 없습니다! (싸우거나 도망치세요!)")
@@ -51,60 +50,73 @@ class GameEngine:
             self._handle_buy(noun)
         elif verb in ["ATTACK", "KILL", "FIGHT"]:
             self._handle_attack(noun)
+        elif verb in ["PLAY", "BLOW"]:
+            self._handle_play(noun)
         else:
             print("\n🤔 무슨 말인지 모르겠습니다.")
 
     def _handle_attack(self, noun: str):
-        """전투 로직"""
         monster = self.db.get_monster(self.state.current_room_id)
         if not monster:
             print("\n여기에는 싸울 상대가 없습니다.")
             return
 
-        # 1. 플레이어 공격
-        player_dmg = random.randint(5, 15) # 기본 공격력
+        player_dmg = random.randint(5, 15)
         if "SWORD" in self.state.inventory:
-            player_dmg += 10 # 무기 보너스
+            player_dmg += 10
         
         monster["hp"] -= player_dmg
         print(f"\n⚔️ 당신은 {monster['name']}을(를) 공격하여 {player_dmg}의 피해를 입혔습니다!")
 
-        # 2. 몬스터 사망 체크
         if monster["hp"] <= 0:
             print(f"💥 {monster['name']}이(가) 쓰러졌습니다! 승리!")
             self.db.delete_monster(self.state.current_room_id)
             self.state.add_score(20)
-            self.state.gold += random.randint(10, 30)
-            print(f"💰 전리품으로 골드를 획득했습니다. (현재 Gold: {self.state.gold})")
+            gold_drop = random.randint(10, 30)
+            self.state.gold += gold_drop
+            print(f"💰 전리품으로 {gold_drop} 골드를 획득했습니다. (현재 Gold: {self.state.gold})")
             return
+        
+        # HP 감소 DB 반영
+        self.db.update_monster_hp(self.state.current_room_id, monster["hp"])
 
-        # 3. 몬스터 반격
         print(f"😡 {monster['name']}이(가) 반격합니다!")
         time.sleep(0.5)
         monster_dmg = monster["damage"]
         self.state.hp -= monster_dmg
         print(f"🩸 당신은 {monster_dmg}의 피해를 입었습니다. (남은 HP: {self.state.hp})")
 
-        # 4. 플레이어 사망 체크
         if self.state.hp <= 0:
             print("\n💀 당신은 치명상을 입고 쓰러졌습니다... GAME OVER")
             self.state.is_running = False
 
     def _handle_flee(self, monster):
-        """도망치기"""
         if random.random() < 0.5:
             print("\n💨 잽싸게 도망쳤습니다!")
-            # 이전 방으로 돌아가는 로직이 필요하지만, 여기서는 단순히 남쪽이나 북쪽으로 랜덤 이동 시도
-            self._handle_move("NORTH") # 임시: 북쪽으로 도주
+            self._handle_move("NORTH")
         else:
             print("\n🚫 도망치지 못했습니다! 몬스터에게 등을 보였습니다.")
             dmg = monster["damage"]
             self.state.hp -= dmg
             print(f"🩸 {dmg}의 피해를 입었습니다! (남은 HP: {self.state.hp})")
 
-    # ... (기존 메서드들: _handle_save, _handle_load, _handle_buy 등 유지)
-    # 아래 코드는 기존 코드와 동일하게 유지하되, render 메서드에서 몬스터 정보 출력 추가
-    
+    def _handle_play(self, noun: str):
+        if noun == "FLUTE" and "FLUTE" in self.state.inventory:
+            if self.state.current_room_id == "castle_gate" and not self.state.flags.get("bridge_lowered"):
+                print("\n🎵 피리를 불자 맑고 고운 소리가 울려 퍼집니다.")
+                time.sleep(1)
+                print("졸고 있던 경비병이 깜짝 놀라 깹니다.")
+                print("'아이고, 손님이 오셨군!' 끼기긱... 쿵! 도개교가 내려옵니다.")
+                
+                self.state.flags["bridge_lowered"] = True
+                self.state.add_score(20)
+                self.db.update_room_description("castle_gate", "도개교가 내려와 있어 성 안으로 들어갈 수 있습니다.")
+                return
+            else:
+                print("\n🎵 피리를 불었습니다. 듣기 좋은 소리네요.")
+        else:
+            print("\n연주할 악기가 없습니다.")
+
     def _handle_save(self):
         try:
             state_dict = dataclasses.asdict(self.state)
@@ -196,19 +208,46 @@ class GameEngine:
             if direction == "EAST": next_room_id = "oasis"; print("\n✨ 오아시스!")
             elif direction == "NORTH": next_room_id = "desert_path"
             else: next_room_id = "desert_maze_1"; print("\n🌪️ 미로 제자리...")
+            
         elif self.state.current_room_id == "serpent_crossing" and direction == "EAST":
             if self.state.flags.get("snake_cleared"): next_room_id = "town_entry"
             else: print("\n🐍 뱀이 막고 있음!"); return
+            
+        elif self.state.current_room_id == "castle_gate" and direction == "NORTH":
+            if self.state.flags.get("bridge_lowered"): next_room_id = "throne_room"
+            else: print("\n🌉 다리가 올라가 있어 건널 수 없습니다. 경비병을 깨워야 할 것 같은데..."); return
+
         elif direction in current_room.exits:
             next_room_id = current_room.exits[direction]
         
         if next_room_id:
+            # 엔딩 체크
+            if next_room_id == "throne_room":
+                self._trigger_ending()
+                return
+
             self.state.current_room_id = next_room_id
             cost = 2 if "desert" in next_room_id or "oasis" in next_room_id else 1
             self.state.decrease_food(cost)
             print(f"\n🏃 {direction} 이동...")
         else:
             print("\n🚫 못 감.")
+
+    def _trigger_ending(self):
+        """게임 엔딩 처리"""
+        print("\n" + "="*50)
+        print("🎉 축하합니다! 성에 도착했습니다!")
+        print("="*50)
+        time.sleep(1)
+        print("왕: '오, 용감한 모험가여! 내 딸을 구하기 위해 여기까지 오다니!'")
+        print("공주: '정말 고마워요!'")
+        print("\n당신은 사악한 마법사를 물리치고, 뱀을 따돌리고, 사막을 건너 공주를 구했습니다.")
+        
+        final_score = self.state.score + 100
+        print(f"\n🏆 최종 점수: {final_score} / 200")
+        print(f"💰 남은 골드: {self.state.gold}")
+        print("\n=== THE END ===")
+        self.state.is_running = False
 
     def render(self):
         print(f"\nScore: {self.state.score} | Gold: {self.state.gold} | Food: {self.state.food} | HP: {self.state.hp}")
@@ -219,7 +258,6 @@ class GameEngine:
             print(f"[{room.name}]")
             print(room.description)
             
-            # 몬스터 존재 여부 확인 및 출력
             monster = self.db.get_monster(self.state.current_room_id)
             if monster:
                 print(f"\n⚠️  {monster['description']}")
