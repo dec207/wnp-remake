@@ -18,38 +18,48 @@ class Database:
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
                 description TEXT,
-                exits TEXT  -- JSON string으로 저장
+                exits TEXT
             )
         ''')
         
-        # 세이브 데이터 테이블 추가
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS saves (
                 slot_id INTEGER PRIMARY KEY,
                 saved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                data TEXT NOT NULL  -- GameState JSON string
+                data TEXT NOT NULL
+            )
+        ''')
+
+        # 몬스터 테이블 추가
+        self.cursor.execute('''
+            CREATE TABLE IF NOT EXISTS monsters (
+                room_id TEXT PRIMARY KEY,
+                id TEXT,
+                name TEXT,
+                hp INTEGER,
+                damage INTEGER,
+                description TEXT
             )
         ''')
         
         self.conn.commit()
         
-        # 초기 데이터가 없으면 주입 (Seeding)
+        # 초기 데이터 주입 체크
         self.cursor.execute("SELECT count(*) FROM rooms")
         if self.cursor.fetchone()[0] == 0:
             self._seed_data()
+        
+        # 몬스터 데이터 주입 (간단히 매번 덮어쓰기 형태로 구현)
+        self._seed_monsters()
 
-    def save_game_state(self, slot_id: int, state_data: dict):
-        """게임 상태를 JSON으로 저장"""
-        json_data = json.dumps(state_data)
-        self.cursor.execute("INSERT OR REPLACE INTO saves (slot_id, data) VALUES (?, ?)", (slot_id, json_data))
+    def _seed_monsters(self):
+        """초기 몬스터 배치"""
+        monsters = [
+            ("desert_path", "scorpion", "거대 전갈 (Giant Scorpion)", 20, 5, "독침을 치켜든 거대한 전갈이 길을 막고 있습니다!"),
+            ("town_entry", "thief", "좀도둑 (Thief)", 30, 8, "눈매가 날카로운 좀도둑이 단검을 들고 서성입니다.")
+        ]
+        self.cursor.executemany("INSERT OR REPLACE INTO monsters VALUES (?, ?, ?, ?, ?, ?)", monsters)
         self.conn.commit()
-
-    def load_game_state(self, slot_id: int) -> Optional[dict]:
-        """저장된 게임 상태를 불러옴"""
-        self.cursor.execute("SELECT data FROM saves WHERE slot_id = ?", (slot_id,))
-        row = self.cursor.fetchone()
-        return json.loads(row[0]) if row else None
-
 
     def _seed_data(self):
         """초기 시나리오 데이터 삽입"""
@@ -94,26 +104,41 @@ class Database:
                 "serpent_crossing",
                 "뱀의 길목 (Serpent's Crossing)",
                 "거대한 협곡을 가로지르는 낡은 다리가 앞에 있습니다.\n하지만 다리 한가운데에 집채만 한 거대한 코브라가 똬리를 틀고 길을 막고 있습니다!\n뱀은 당신을 보며 위협적으로 '쉬익' 소리를 냅니다.",
-                json.dumps({"WEST": "oasis"})  # 초기에는 뱀 때문에 건너갈 수 없음 (EAST 없음)
+                json.dumps({"WEST": "oasis"})
             ),
             (
                 "town_entry",
                 "마을 입구 (Town Entrance)",
-                "다리를 건너 안전하게 마을 입구에 도착했습니다. 평화로운 음악 소리가 들려옵니다.",
-                json.dumps({"WEST": "serpent_crossing"})
+                "다리를 건너 안전하게 마을 입구에 도착했습니다. 북쪽에는 '잡화점' 간판이 보입니다.\n사람들이 분주하게 오가고 있습니다.",
+                json.dumps({"WEST": "serpent_crossing", "NORTH": "general_store"})
+            ),
+            (
+                "general_store",
+                "마을 잡화점 (General Store)",
+                "다양한 물건이 진열된 잡화점입니다. 주인장이 반갑게 인사합니다.\n[판매 품목]\n- APPLE (5 Gold): 맛있는 사과\n- FLUTE (50 Gold): 신비한 피리\n\n구매하려면 'BUY <ITEM>'을 입력하세요.",
+                json.dumps({"SOUTH": "town_entry"})
             )
         ]
-        
-        # 기존 데이터가 있으면 충돌할 수 있으니, OR IGNORE 혹은 REPLACE 사용
         self.cursor.executemany("INSERT OR REPLACE INTO rooms VALUES (?, ?, ?, ?)", initial_rooms)
         self.conn.commit()
-        print("✅ DB: 사막 지역(Zone 1) 데이터 확장 완료.")
+        print("✅ DB: 사막, 미로, 마을, 상점, 몬스터 데이터 로딩 완료.")
+
+    def save_game_state(self, slot_id: int, state_data: dict):
+        """게임 상태를 JSON으로 저장"""
+        json_data = json.dumps(state_data)
+        self.cursor.execute("INSERT OR REPLACE INTO saves (slot_id, data) VALUES (?, ?)", (slot_id, json_data))
+        self.conn.commit()
+
+    def load_game_state(self, slot_id: int) -> Optional[dict]:
+        """저장된 게임 상태를 불러옴"""
+        self.cursor.execute("SELECT data FROM saves WHERE slot_id = ?", (slot_id,))
+        row = self.cursor.fetchone()
+        return json.loads(row[0]) if row else None
 
     def get_room(self, room_id: str) -> Optional[Room]:
         """DB에서 방 정보를 조회하여 Room 객체로 반환"""
         self.cursor.execute("SELECT id, name, description, exits FROM rooms WHERE id = ?", (room_id,))
         row = self.cursor.fetchone()
-        
         if row:
             return Room(
                 id=row[0],
@@ -124,8 +149,21 @@ class Database:
         return None
 
     def update_room_description(self, room_id: str, new_desc: str):
-        """방 설명 업데이트 (예: 마법사 처치 후)"""
+        """방 설명 업데이트"""
         self.cursor.execute("UPDATE rooms SET description = ? WHERE id = ?", (new_desc, room_id))
+        self.conn.commit()
+        
+    def get_monster(self, room_id: str) -> Optional[dict]:
+        """해당 방에 있는 몬스터 조회"""
+        self.cursor.execute("SELECT id, name, hp, damage, description FROM monsters WHERE room_id = ?", (room_id,))
+        row = self.cursor.fetchone()
+        if row:
+            return {"id": row[0], "name": row[1], "hp": row[2], "damage": row[3], "description": row[4]}
+        return None
+
+    def delete_monster(self, room_id: str):
+        """몬스터 처치 시 DB에서 제거"""
+        self.cursor.execute("DELETE FROM monsters WHERE room_id = ?", (room_id,))
         self.conn.commit()
 
     def close(self):

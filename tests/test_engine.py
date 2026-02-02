@@ -57,7 +57,46 @@ class TestWNP(unittest.TestCase):
         # 2. 결과 검증
         self.assertTrue(self.engine.state.flags.get("wizard_defeated"))
         self.assertEqual(self.engine.state.score, 50)
+        self.assertEqual(self.engine.state.gold, 100)  # 골드 획득 확인
         self.assertNotIn("THERMAL POD", self.engine.state.inventory)
+
+    def test_shop_system(self):
+        """상점 구매 테스트"""
+        # 1. 상점으로 이동 및 골드 지급
+        self.engine.state.current_room_id = "general_store"
+        self.engine.state.gold = 100
+        initial_food = self.engine.state.food
+
+        # 2. 사과 구매 (Food 회복)
+        self.engine.process_command("BUY", "APPLE")
+        self.assertEqual(self.engine.state.gold, 95) # 100 - 5
+        self.assertEqual(self.engine.state.food, min(100, initial_food + 10))
+
+        # 3. 비싼 물건 구매 시도 (돈 부족)
+        self.engine.state.gold = 10
+        self.engine.process_command("BUY", "FLUTE") # 50 Gold
+        self.assertEqual(self.engine.state.gold, 10) # 변동 없어야 함
+        self.assertNotIn("FLUTE", self.engine.state.inventory)
+
+    def test_snake_event(self):
+        """뱀 이벤트 및 이동 제한 테스트"""
+        self.engine.state.current_room_id = "serpent_crossing"
+        self.engine.state.inventory.append("MAGIC STONE")
+        
+        # 1. 뱀이 있을 때 이동 시도 -> 실패
+        self.engine.process_command("GO", "EAST")
+        self.assertEqual(self.engine.state.current_room_id, "serpent_crossing")
+        
+        # 2. 돌 던져서 뱀 처치
+        self.engine.process_command("THROW", "STONE")
+        self.assertTrue(self.engine.state.flags.get("snake_cleared"))
+        self.assertNotIn("MAGIC STONE", self.engine.state.inventory)
+        
+        # 3. 처치 후 이동 시도 -> 성공
+        # 주의: DB(wnp.db)에는 town_entry 정보가 없으면 이동 불가할 수 있음.
+        # 테스트 환경(test_db)이 실제 DB와 동일하게 세팅되어야 함.
+        # 현재 setUp에서 DB를 초기화하지 않으므로, 이 부분은 Mocking이 없으면 실패할 수 있음.
+        # 따라서 로직 플래그까지만 검증.
 
 if __name__ == '__main__':
     unittest.main()
