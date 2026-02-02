@@ -21,12 +21,35 @@ class Database:
                 exits TEXT  -- JSON string으로 저장
             )
         ''')
+        
+        # 세이브 데이터 테이블 추가
+        self.cursor.execute('''
+            CREATE TABLE IF NOT EXISTS saves (
+                slot_id INTEGER PRIMARY KEY,
+                saved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                data TEXT NOT NULL  -- GameState JSON string
+            )
+        ''')
+        
         self.conn.commit()
         
         # 초기 데이터가 없으면 주입 (Seeding)
         self.cursor.execute("SELECT count(*) FROM rooms")
         if self.cursor.fetchone()[0] == 0:
             self._seed_data()
+
+    def save_game_state(self, slot_id: int, state_data: dict):
+        """게임 상태를 JSON으로 저장"""
+        json_data = json.dumps(state_data)
+        self.cursor.execute("INSERT OR REPLACE INTO saves (slot_id, data) VALUES (?, ?)", (slot_id, json_data))
+        self.conn.commit()
+
+    def load_game_state(self, slot_id: int) -> Optional[dict]:
+        """저장된 게임 상태를 불러옴"""
+        self.cursor.execute("SELECT data FROM saves WHERE slot_id = ?", (slot_id,))
+        row = self.cursor.fetchone()
+        return json.loads(row[0]) if row else None
+
 
     def _seed_data(self):
         """초기 시나리오 데이터 삽입"""
@@ -52,8 +75,14 @@ class Database:
             (
                 "desert_path",
                 "끝없는 사막 (Endless Desert)",
-                "사방이 모래뿐인 사막 한가운데입니다. 태양은 뜨겁고 방향 감각이 흐려집니다.\n멀리 동쪽에 야자수가 보이는 것 같습니다.",
-                json.dumps({"NORTH": "desert_entry", "EAST": "oasis"})
+                "사방이 모래뿐인 사막 한가운데입니다. 북쪽으로 돌아가는 발자국이 희미합니다.\n남쪽으로는 모래 폭풍이 불고 있습니다.",
+                json.dumps({"NORTH": "desert_entry", "SOUTH": "desert_maze_1"})
+            ),
+            (
+                "desert_maze_1",
+                "사막의 미로 (Desert Maze)",
+                "모래 언덕이 끝없이 이어져 방향을 알 수 없습니다. 뼈만 남은 여행자의 흔적이 보입니다.",
+                json.dumps({"NORTH": "desert_path", "SOUTH": "desert_maze_1", "EAST": "desert_maze_1", "WEST": "desert_maze_1"})
             ),
             (
                 "oasis",

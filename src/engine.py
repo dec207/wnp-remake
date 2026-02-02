@@ -1,4 +1,5 @@
 import time
+import dataclasses
 from typing import Dict
 from .models import GameState, Room
 from .database import Database
@@ -8,19 +9,24 @@ class GameEngine:
         self.state = GameState()
         self.db = Database()
         # 테스트용 초기 아이템 지급
-        self.state.inventory.append("THERMAL POD")
+        if not self.state.inventory:
+             self.state.inventory.append("THERMAL POD")
 
     def process_command(self, verb: str, noun: str):
         if verb in ["QUIT", "EXIT"]:
             self.state.is_running = False
-            self.db.close() # DB 연결 종료
+            self.db.close()
             print("\n게임을 종료합니다. 안녕히 가세요!")
             return
 
-        if verb in ["GO", "WALK", "MOVE", "RUN"]:
+        if verb in ["SAVE"]:
+            self._handle_save()
+        elif verb in ["LOAD", "RESTORE"]:
+            self._handle_load()
+        elif verb in ["GO", "WALK", "MOVE", "RUN"]:
             self._handle_move(noun)
         elif verb in ["N", "S", "E", "W", "NORTH", "SOUTH", "EAST", "WEST"]:
-            # 방향만 입력한 경우 처리 (예: "N")
+            # ... (이하 동일)
             direction_map = {"N": "NORTH", "S": "SOUTH", "E": "EAST", "W": "WEST"}
             full_dir = direction_map.get(verb, verb)
             self._handle_move(full_dir)
@@ -33,20 +39,61 @@ class GameEngine:
         else:
             print("\n🤔 무슨 말인지 모르겠습니다.")
 
+    def _handle_save(self):
+        """현재 상태를 DB에 저장"""
+        try:
+            # dataclass를 dict로 변환
+            state_dict = dataclasses.asdict(self.state)
+            self.db.save_game_state(1, state_dict) # 편의상 슬롯 1번 고정
+            print("\n💾 게임이 저장되었습니다! (Slot 1)")
+        except Exception as e:
+            print(f"\n🚫 저장 중 오류 발생: {e}")
+
+    def _handle_load(self):
+        """저장된 상태를 불러옴"""
+        try:
+            saved_data = self.db.load_game_state(1)
+            if saved_data:
+                # 딕셔너리를 다시 GameState 객체로 변환
+                self.state = GameState(**saved_data)
+                self.state.is_running = True # 로드 후 바로 종료되지 않도록
+                print("\n📂 게임을 불러왔습니다! (Slot 1)")
+                self.render() # 로드된 상태의 방 정보 출력
+            else:
+                print("\n🚫 저장된 게임이 없습니다.")
+        except Exception as e:
+            print(f"\n🚫 불러오기 중 오류 발생: {e}")
+
     def _handle_move(self, direction: str):
         if not direction:
             print("\n어디로 갈까요?")
             return
             
         current_room = self.db.get_room(self.state.current_room_id)
-        if direction in current_room.exits:
+        next_room_id = None
+
+        # 1. 특수 미로 로직 처리
+        if self.state.current_room_id == "desert_maze_1":
+            if direction == "EAST":
+                next_room_id = "oasis"
+                print("\n✨ 모래 폭풍을 뚫고 오아시스를 발견했습니다!")
+            elif direction == "NORTH":
+                next_room_id = "desert_path"
+            else:
+                next_room_id = "desert_maze_1"
+                print("\n🌪️ 한참을 걸었지만, 제자리로 돌아온 것 같습니다...")
+        
+        # 2. 일반 이동 로직 (미로가 아닌 경우)
+        elif direction in current_room.exits:
             next_room_id = current_room.exits[direction]
+        
+        # 3. 이동 결과 처리
+        if next_room_id:
             self.state.current_room_id = next_room_id
             
-            # 갈증 시스템: 사막 지역(desert_, oasis)에서는 이동 시 Food 2배 소모
+            # 갈증 시스템
             is_desert = "desert" in next_room_id or "oasis" in next_room_id
             cost = 2 if is_desert else 1
-            
             self.state.decrease_food(cost)
             
             print(f"\n🏃 {direction} 방향으로 이동합니다... {'(🥵 덥습니다!)' if is_desert else ''}")
