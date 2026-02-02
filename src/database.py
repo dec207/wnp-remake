@@ -87,8 +87,20 @@ class Database:
             (
                 "oasis",
                 "신비한 오아시스 (Mysterious Oasis)",
-                "맑은 물이 솟아나는 오아시스입니다! 물가에는 '마법의 돌'처럼 보이는 것이 반짝입니다.",
-                json.dumps({"WEST": "desert_path"})
+                "맑은 물이 솟아나는 오아시스입니다! 물가에는 '마법의 돌'처럼 보이는 것이 반짝입니다.\n동쪽으로는 거대한 절벽으로 이어지는 길이 보입니다.",
+                json.dumps({"WEST": "desert_path", "EAST": "serpent_crossing"})
+            ),
+            (
+                "serpent_crossing",
+                "뱀의 길목 (Serpent's Crossing)",
+                "거대한 협곡을 가로지르는 낡은 다리가 앞에 있습니다.\n하지만 다리 한가운데에 집채만 한 거대한 코브라가 똬리를 틀고 길을 막고 있습니다!\n뱀은 당신을 보며 위협적으로 '쉬익' 소리를 냅니다.",
+                json.dumps({"WEST": "oasis"})  # 초기에는 뱀 때문에 건너갈 수 없음 (EAST 없음)
+            ),
+            (
+                "town_entry",
+                "마을 입구 (Town Entrance)",
+                "다리를 건너 안전하게 마을 입구에 도착했습니다. 평화로운 음악 소리가 들려옵니다.",
+                json.dumps({"WEST": "serpent_crossing"})
             )
         ]
         
