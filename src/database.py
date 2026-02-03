@@ -7,7 +7,8 @@ DB_PATH = "wnp.db"
 
 class Database:
     def __init__(self):
-        self.conn = sqlite3.connect(DB_PATH)
+        # 웹 환경(멀티 스레드) 지원을 위해 check_same_thread=False 추가
+        self.conn = sqlite3.connect(DB_PATH, check_same_thread=False)
         self.cursor = self.conn.cursor()
         self.init_db()
 
