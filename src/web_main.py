@@ -40,3 +40,10 @@ if __name__ == '__main__':
     # 리플릿은 보통 8080 포트를 사용합니다.
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port)
+
+# Replit deployment (when run as module)
+if __name__.startswith('src.'):
+    port = int(os.environ.get('PORT', 8080))
+    # We use a separate thread or just run it if it's the main entry
+    # Since this is the 'run' command, it should block.
+    app.run(host='0.0.0.0', port=port)
