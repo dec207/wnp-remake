@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WNP Remake - Web Edition</title>
+    <style>
+        body { background-color: #1a1a1a; color: #00ff00; font-family: 'Courier New', Courier, monospace; display: flex; flex-direction: column; height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; }
+        #game-container { max-width: 800px; margin: 0 auto; width: 100%; border: 2px solid #333; padding: 20px; background: #000; flex-grow: 1; display: flex; flex-direction: column; }
+        #status-bar { border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 20px; font-weight: bold; color: #ffcc00; }
+        #output { flex-grow: 1; overflow-y: auto; white-space: pre-wrap; margin-bottom: 20px; }
+        #input-container { display: flex; border-top: 1px solid #333; padding-top: 20px; }
+        #command-input { background: transparent; border: none; color: #00ff00; font-family: inherit; font-size: 1.2rem; flex-grow: 1; outline: none; }
+        #prompt { font-size: 1.2rem; margin-right: 10px; }
+        .room-name { color: #00ffff; font-size: 1.5rem; margin-bottom: 10px; }
+        .monster-alert { color: #ff3333; margin-top: 10px; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div id="status-bar">WNP Remake Initializing...</div>
+        <div id="output">
+            <div class="room-name" id="room-name"></div>
+            <div id="room-desc"></div>
+            <div class="monster-alert" id="monster-alert"></div>
+        </div>
+        <div id="input-container">
+            <span id="prompt">&gt;&gt;</span>
+            <input type="text" id="command-input" autofocus autocomplete="off">
+        </div>
+    </div>
+
+    <script>
+        const output = document.getElementById('output');
+        const commandInput = document.getElementById('command-input');
+        const statusBar = document.getElementById('status-bar');
+        const roomName = document.getElementById('room-name');
+        const roomDesc = document.getElementById('room-desc');
+        const monsterAlert = document.getElementById('monster-alert');
+
+        function updateDisplay(data) {
+            statusBar.innerText = data.status;
+            roomName.innerText = `[${data.room_name}]`;
+            roomDesc.innerText = data.description;
+            monsterAlert.innerText = data.monster ? `⚠️ ${data.monster}` : "";
+        }
+
+        // 초기 상태 로드
+        fetch('/command', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ command: 'LOOK' })
+        })
+        .then(res => res.json())
+        .then(updateDisplay);
+
+        commandInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                const command = commandInput.value;
+                commandInput.value = '';
+                
+                fetch('/command', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: command })
+                })
+                .then(res => res.json())
+                .then(updateDisplay);
+            }
+        });
+    </script>
+</body>
+</html>
